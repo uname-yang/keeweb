@@ -1,0 +1,23 @@
+.tag {
+  @include flex(1);
+  @include display(flex);
+  @include align-items(stretch);
+  @include flex-direction(column);
+  @include justify-content(flex-start);
+  width: 100%;
+  user-select: none;
+
+  &__space {
+    @include flex(1);
+  }
+
+  &__buttons {
+    @include display(flex);
+    @include flex-direction(row);
+    margin-top: $base-padding-v;
+
+    &-trash {
+      @include icon-btn($error:true);
+    }
+  }
+}

@@ -5,9 +5,11 @@ html {
 }
 
 body {
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
+  cursor: default;
   position: fixed;
+  -webkit-overflow-scrolling: touch;
+  -webkit-tap-highlight-color: transparent;
 }
 
 noscript {

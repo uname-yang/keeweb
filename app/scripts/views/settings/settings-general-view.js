@@ -2,6 +2,7 @@
 
 var Backbone = require('backbone'),
     SettingsPrvView = require('./settings-prv-view'),
+    SettingsLogsView = require('./settings-logs-view'),
     Launcher = require('../../comp/launcher'),
     Updater = require('../../comp/updater'),
     Format = require('../../util/format'),
@@ -19,6 +20,8 @@ var SettingsGeneralView = Backbone.View.extend({
 
     events: {
         'change .settings__general-theme': 'changeTheme',
+        'change .settings__general-locale': 'changeLocale',
+        'change .settings__general-font-size': 'changeFontSize',
         'change .settings__general-expand': 'changeExpandGroups',
         'change .settings__general-auto-update': 'changeAutoUpdate',
         'change .settings__general-idle-minutes': 'changeIdleMinutes',
@@ -35,19 +38,30 @@ var SettingsGeneralView = Backbone.View.extend({
         'click .settings__general-download-update-btn': 'downloadUpdate',
         'click .settings__general-update-found-btn': 'installFoundUpdate',
         'change .settings__general-prv-check': 'changeStorageEnabled',
+        'click .settings__general-show-advanced': 'showAdvancedSettings',
         'click .settings__general-dev-tools-link': 'openDevTools',
-        'click .settings__general-try-beta-link': 'tryBeta'
+        'click .settings__general-try-beta-link': 'tryBeta',
+        'click .settings__general-show-logs-link': 'showLogs'
     },
 
-    views: {},
+    views: null,
 
     allThemes: {
-        fb: 'Flat blue',
-        db: 'Dark brown',
-        wh: 'White'
+        fb: Locale.setGenThemeFb,
+        db: Locale.setGenThemeDb,
+        sd: Locale.setGenThemeSd,
+        sl: Locale.setGenThemeSl,
+        wh: Locale.setGenThemeWh,
+        hc: Locale.setGenThemeHc
+    },
+
+    allLocales: {
+        en: 'English',
+        'de-DE': 'Deutsch'
     },
 
     initialize: function() {
+        this.views = {};
         this.listenTo(UpdateModel.instance, 'change:status', this.render, this);
         this.listenTo(UpdateModel.instance, 'change:updateStatus', this.render, this);
     },
@@ -60,6 +74,9 @@ var SettingsGeneralView = Backbone.View.extend({
         this.renderTemplate({
             themes: this.allThemes,
             activeTheme: AppSettingsModel.instance.get('theme'),
+            locales: this.allLocales,
+            activeLocale: AppSettingsModel.instance.get('locale') || 'en',
+            fontSize: AppSettingsModel.instance.get('fontSize'),
             expandGroups: AppSettingsModel.instance.get('expandGroups'),
             canClearClipboard: !!Launcher,
             clipboardSeconds: AppSettingsModel.instance.get('clipboardSeconds'),
@@ -70,10 +87,11 @@ var SettingsGeneralView = Backbone.View.extend({
             devTools: Launcher && Launcher.devTools,
             canAutoUpdate: Updater.enabled,
             canMinimize: Launcher && Launcher.canMinimize(),
+            canDetectMinimize: !!Launcher,
             lockOnMinimize: Launcher && AppSettingsModel.instance.get('lockOnMinimize'),
             lockOnCopy: AppSettingsModel.instance.get('lockOnCopy'),
             tableView: AppSettingsModel.instance.get('tableView'),
-            canSetTableView: FeatureDetector.isDesktop(),
+            canSetTableView: !FeatureDetector.isMobile,
             autoUpdate: Updater.getAutoUpdateType(),
             updateInProgress: Updater.updateInProgress(),
             updateInfo: this.getUpdateInfo(),
@@ -142,25 +160,45 @@ var SettingsGeneralView = Backbone.View.extend({
 
     getStorageProviders: function() {
         var storageProviders = [];
-        Object.keys(Storage).forEach(function(name) {
+        Object.keys(Storage).forEach(name => {
             var prv = Storage[name];
             if (!prv.system) {
                 storageProviders.push(prv);
             }
         });
-        storageProviders.sort(function(x, y) { return (x.uipos || Infinity) - (y.uipos || Infinity); });
-        return storageProviders.map(function(sp) {
-            return {
-                name: sp.name,
-                enabled: sp.enabled,
-                hasConfig: sp.getSettingsConfig
-            };
-        });
+        storageProviders.sort((x, y) => (x.uipos || Infinity) - (y.uipos || Infinity));
+        return storageProviders.map(sp => ({
+            name: sp.name,
+            enabled: sp.enabled,
+            hasConfig: sp.getSettingsConfig
+        }));
     },
 
     changeTheme: function(e) {
         var theme = e.target.value;
         AppSettingsModel.instance.set('theme', theme);
+    },
+
+    changeLocale: function(e) {
+        var locale = e.target.value;
+        if (locale === 'en') {
+            locale = null;
+        }
+        if (locale === '...') {
+            e.target.value = AppSettingsModel.instance.get('locale') || 'en';
+            Alerts.info({
+                icon: 'language',
+                header: Locale.setGenLocMsg,
+                body: Locale.setGenLocMsgBody + ` <a target="_blank" href="${Links.Translation}">${Locale.setGenLocMsgLink}</a>`
+            });
+            return;
+        }
+        AppSettingsModel.instance.set('locale', locale);
+    },
+
+    changeFontSize: function(e) {
+        var fontSize = +e.target.value;
+        AppSettingsModel.instance.set('fontSize', fontSize);
     },
 
     changeClipboard: function(e) {
@@ -238,7 +276,7 @@ var SettingsGeneralView = Backbone.View.extend({
     },
 
     installFoundUpdate: function() {
-        Updater.update(true, function() {
+        Updater.update(true, () => {
             Launcher.requestRestart();
         });
     },
@@ -252,10 +290,15 @@ var SettingsGeneralView = Backbone.View.extend({
     changeStorageEnabled: function(e) {
         var storage = Storage[$(e.target).data('storage')];
         if (storage) {
-            storage.enabled = e.target.checked;
+            storage.setEnabled(e.target.checked);
             AppSettingsModel.instance.set(storage.name, storage.enabled);
             this.$el.find('.settings__general-' + storage.name).toggleClass('hide', !e.target.checked);
         }
+    },
+
+    showAdvancedSettings: function() {
+        this.$el.find('.settings__general-show-advanced, .settings__general-advanced').toggleClass('hide');
+        this.scrollToBottom();
     },
 
     openDevTools: function() {
@@ -273,6 +316,18 @@ var SettingsGeneralView = Backbone.View.extend({
         } else {
             location.href = Links.BetaWebApp;
         }
+    },
+
+    showLogs: function() {
+        if (this.views.logView) {
+            this.views.logView.remove();
+        }
+        this.views.logView = new SettingsLogsView({ el: this.$el.find('.settings__general-advanced') }).render();
+        this.scrollToBottom();
+    },
+
+    scrollToBottom: function() {
+        this.$el.closest('.scroller').scrollTop(this.$el.height());
     }
 });
 

@@ -13,7 +13,7 @@ var Backbone = require('backbone'),
 var logger = new Logger('updater');
 
 var Updater = {
-    UpdateInterval: 1000*60*60*24,
+    UpdateInterval: 1000 * 60 * 60 * 24,
     MinUpdateTimeout: 500,
     MinUpdateSize: 10000,
     UpdateCheckFiles: ['index.html', 'app.js'],
@@ -38,10 +38,7 @@ var Updater = {
     },
 
     init: function() {
-        var willCheckNow = this.scheduleNextCheck();
-        if (!willCheckNow && this.getAutoUpdateType()) {
-            this.check();
-        }
+        this.scheduleNextCheck();
         if (!Launcher && window.applicationCache) {
             window.applicationCache.addEventListener('updateready', this.checkAppCacheUpdateReady.bind(this));
             this.checkAppCacheUpdateReady();
@@ -63,7 +60,6 @@ var Updater = {
         }
         this.nextCheckTimeout = setTimeout(this.check.bind(this), timeDiff);
         logger.info('Next update check will happen in ' + Math.round(timeDiff / 1000) + 's');
-        return timeDiff === this.MinUpdateTimeout;
     },
 
     check: function(startedByUser) {
@@ -71,13 +67,12 @@ var Updater = {
             return;
         }
         UpdateModel.instance.set('status', 'checking');
-        var that = this;
         if (!startedByUser) {
             // additional protection from broken program logic, to ensure that auto-checks are not performed more than once an hour
             var diffMs = new Date() - this.updateCheckDate;
             if (isNaN(diffMs) || diffMs < 1000 * 60 * 60) {
                 logger.error('Prevented update check; last check was performed at ' + this.updateCheckDate);
-                that.scheduleNextCheck();
+                this.scheduleNextCheck();
                 return;
             }
             this.updateCheckDate = new Date();
@@ -86,7 +81,7 @@ var Updater = {
         Transport.httpGet({
             url: Links.Manifest,
             utf8: true,
-            success: function(data) {
+            success: data => {
                 var dt = new Date();
                 var match = data.match(/#\s*(\d+\-\d+\-\d+):v([\d+\.\w]+)/);
                 logger.info('Update check: ' + (match ? match[0] : 'unknown'));
@@ -94,7 +89,7 @@ var Updater = {
                     var errMsg = 'No version info found';
                     UpdateModel.instance.set({ status: 'error', lastCheckDate: dt, lastCheckError: errMsg });
                     UpdateModel.instance.save();
-                    that.scheduleNextCheck();
+                    this.scheduleNextCheck();
                     return;
                 }
                 var updateMinVersionMatch = data.match(/#\s*updmin:v([\d+\.\w]+)/);
@@ -109,8 +104,8 @@ var Updater = {
                     lastCheckUpdMin: updateMinVersionMatch ? updateMinVersionMatch[1] : null
                 });
                 UpdateModel.instance.save();
-                that.scheduleNextCheck();
-                if (!that.canAutoUpdate()) {
+                this.scheduleNextCheck();
+                if (!this.canAutoUpdate()) {
                     return;
                 }
                 if (prevLastVersion === UpdateModel.instance.get('lastVersion') &&
@@ -118,13 +113,13 @@ var Updater = {
                     logger.info('Waiting for the user to apply downloaded update');
                     return;
                 }
-                if (!startedByUser && that.getAutoUpdateType() === 'install') {
-                    that.update(startedByUser);
-                } else if (that.compareVersions(UpdateModel.instance.get('lastVersion'), RuntimeInfo.version) > 0) {
+                if (!startedByUser && this.getAutoUpdateType() === 'install') {
+                    this.update(startedByUser);
+                } else if (this.compareVersions(UpdateModel.instance.get('lastVersion'), RuntimeInfo.version) > 0) {
                     UpdateModel.instance.set('updateStatus', 'found');
                 }
             },
-            error: function(e) {
+            error: e => {
                 logger.error('Update check error', e);
                 UpdateModel.instance.set({
                     status: 'error',
@@ -132,7 +127,7 @@ var Updater = {
                     lastCheckError: 'Error checking last version'
                 });
                 UpdateModel.instance.save();
-                that.scheduleNextCheck();
+                this.scheduleNextCheck();
             }
         });
     },
@@ -176,16 +171,15 @@ var Updater = {
             return;
         }
         UpdateModel.instance.set({ updateStatus: 'downloading', updateError: null });
-        var that = this;
         logger.info('Downloading update', ver);
         Transport.httpGet({
             url: Links.UpdateDesktop.replace('{ver}', ver),
             file: 'KeeWeb-' + ver + '.zip',
             cache: !startedByUser,
-            success: function(filePath) {
+            success: filePath => {
                 UpdateModel.instance.set('updateStatus', 'extracting');
-                logger.info('Extracting update file', that.UpdateCheckFiles, filePath);
-                that.extractAppUpdate(filePath, function(err) {
+                logger.info('Extracting update file', this.UpdateCheckFiles, filePath);
+                this.extractAppUpdate(filePath, err => {
                     if (err) {
                         logger.error('Error extracting update', err);
                         UpdateModel.instance.set({ updateStatus: 'error', updateError: 'Error extracting update' });
@@ -211,22 +205,21 @@ var Updater = {
         var expectedFiles = this.UpdateCheckFiles;
         var appPath = Launcher.getUserDataPath();
         var StreamZip = Launcher.req('node-stream-zip');
-        var that = this;
         var zip = new StreamZip({ file: updateFile, storeEntries: true });
         zip.on('error', cb);
-        zip.on('ready', function() {
-            var containsAll = expectedFiles.every(function(expFile) {
+        zip.on('ready', () => {
+            var containsAll = expectedFiles.every(expFile => {
                 var entry = zip.entry(expFile);
                 return entry && entry.isFile;
             });
             if (!containsAll) {
                 return cb('Bad archive');
             }
-            var validationError = that.validateArchiveSignature(updateFile, zip);
+            var validationError = this.validateArchiveSignature(updateFile, zip);
             if (validationError) {
                 return cb('Invalid archive: ' + validationError);
             }
-            zip.extract(null, appPath, function(err) {
+            zip.extract(null, appPath, err => {
                 zip.close();
                 if (err) {
                     return cb(err);

@@ -21,13 +21,15 @@ var FooterView = Backbone.View.extend({
     initialize: function () {
         this.views = {};
 
-        KeyHandler.onKey(Keys.DOM_VK_L, this.lockWorkspace, this, KeyHandler.SHORTCUT_ACTION);
+        KeyHandler.onKey(Keys.DOM_VK_L, this.lockWorkspace, this, KeyHandler.SHORTCUT_ACTION, false, true);
         KeyHandler.onKey(Keys.DOM_VK_G, this.genPass, this, KeyHandler.SHORTCUT_ACTION);
         KeyHandler.onKey(Keys.DOM_VK_O, this.openFile, this, KeyHandler.SHORTCUT_ACTION);
         KeyHandler.onKey(Keys.DOM_VK_S, this.saveAll, this, KeyHandler.SHORTCUT_ACTION);
         KeyHandler.onKey(Keys.DOM_VK_COMMA, this.toggleSettings, this, KeyHandler.SHORTCUT_ACTION);
 
+        this.listenTo(this, 'hide', this.viewHidden);
         this.listenTo(this.model.files, 'update reset change', this.render);
+        this.listenTo(Backbone, 'set-locale', this.render);
         this.listenTo(UpdateModel.instance, 'change:updateStatus', this.render);
     },
 
@@ -39,8 +41,18 @@ var FooterView = Backbone.View.extend({
         return this;
     },
 
-    lockWorkspace: function() {
-        Backbone.trigger('lock-workspace');
+    viewHidden: function() {
+        if (this.views.gen) {
+            this.views.gen.remove();
+            delete this.views.gen;
+        }
+    },
+
+    lockWorkspace: function(e) {
+        if (this.model.files.hasOpenFiles()) {
+            e.preventDefault();
+            Backbone.trigger('lock-workspace');
+        }
     },
 
     genPass: function(e) {
@@ -54,8 +66,8 @@ var FooterView = Backbone.View.extend({
             bodyRect = document.body.getBoundingClientRect(),
             right = bodyRect.right - rect.right,
             bottom = bodyRect.bottom - rect.top;
-        var generator = new GeneratorView({ model: { copy: true, pos: { right: right, bottom: bottom } }}).render();
-        generator.once('remove', (function() { delete this.views.gen; }).bind(this));
+        var generator = new GeneratorView({ model: { copy: true, pos: { right: right, bottom: bottom } } }).render();
+        generator.once('remove', () => { delete this.views.gen; });
         this.views.gen = generator;
     },
 

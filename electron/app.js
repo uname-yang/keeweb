@@ -1,40 +1,34 @@
 'use strict';
 
-/* jshint node:true */
-/* jshint browser:false */
-
-var app = require('app'),
+var electron = require('electron'),
+    app = electron.app,
     path = require('path'),
-    fs = require('fs'),
-    BrowserWindow = require('browser-window'),
-    Menu = require('menu'),
-    Tray = require('tray'),
-    globalShortcut = require('electron').globalShortcut;
+    fs = require('fs');
 
 var mainWindow = null,
     appIcon = null,
-    openFile = process.argv.filter(function(arg) { return /\.kdbx$/i.test(arg); })[0],
+    openFile = process.argv.filter(arg => /\.kdbx$/i.test(arg))[0],
     ready = false,
     restartPending = false,
-    htmlPath = path.join(__dirname, 'index.html'),
     mainWindowPosition = {},
     updateMainWindowPositionTimeout = null,
     windowPositionFileName = path.join(app.getPath('userData'), 'window-position.json');
 
-process.argv.forEach(function(arg) {
-    if (arg.lastIndexOf('--htmlpath=', 0) === 0) {
-        htmlPath = path.resolve(arg.replace('--htmlpath=', ''), 'index.html');
-    }
-});
+let htmlPath = process.argv.filter(arg => arg.startsWith('--htmlpath=')).map(arg => arg.replace('--htmlpath=', ''))[0];
+if (!htmlPath) {
+    htmlPath = 'file://' + path.join(__dirname, 'index.html');
+}
 
-app.on('window-all-closed', function() {
+app.on('window-all-closed', () => {
     if (restartPending) {
         // unbind all handlers, load new app.js module and pass control to it
-        globalShortcut.unregisterAll();
         app.removeAllListeners('window-all-closed');
         app.removeAllListeners('ready');
         app.removeAllListeners('open-file');
         app.removeAllListeners('activate');
+        electron.globalShortcut.unregisterAll();
+        electron.powerMonitor.removeAllListeners('suspend');
+        electron.powerMonitor.removeAllListeners('resume');
         var userDataAppFile = path.join(app.getPath('userData'), 'app.js');
         delete require.cache[require.resolve('./app.js')];
         require(userDataAppFile);
@@ -45,66 +39,86 @@ app.on('window-all-closed', function() {
         }
     }
 });
-app.on('ready', function() {
-    setAppOptions();
-    createMainWindow();
-    setGlobalShortcuts();
+app.on('ready', () => {
+    if (!checkSingleInstance()) {
+        setAppOptions();
+        createMainWindow();
+        setGlobalShortcuts();
+        subscribePowerEvents();
+    }
 });
-app.on('open-file', function(e, path) {
+app.on('open-file', (e, path) => {
     e.preventDefault();
     openFile = path;
     notifyOpenFile();
 });
-app.on('activate', function() {
+app.on('activate', () => {
     if (process.platform === 'darwin') {
         if (!mainWindow) {
             createMainWindow();
         }
     }
 });
-app.on('will-quit', function() {
-    globalShortcut.unregisterAll();
+app.on('will-quit', () => {
+    electron.globalShortcut.unregisterAll();
 });
-app.restartApp = function() {
+app.restartApp = function () {
     restartPending = true;
     mainWindow.close();
-    setTimeout(function() { restartPending = false; }, 1000);
+    setTimeout(() => {
+        restartPending = false;
+    }, 1000);
 };
-app.openWindow = function(opts) {
-    return new BrowserWindow(opts);
+app.openWindow = function (opts) {
+    return new electron.BrowserWindow(opts);
 };
-app.minimizeApp = function() {
+app.minimizeApp = function () {
     if (process.platform !== 'darwin') {
         mainWindow.minimize();
         mainWindow.setSkipTaskbar(true);
-        appIcon = new Tray(path.join(__dirname, 'icon.png'));
+        appIcon = new electron.Tray(path.join(__dirname, 'icon.png'));
         appIcon.on('click', restoreMainWindow);
-        var contextMenu = Menu.buildFromTemplate([
-            { label: 'Open KeeWeb', click: restoreMainWindow },
-            { label: 'Quit KeeWeb', click: closeMainWindow }
+        var contextMenu = electron.Menu.buildFromTemplate([
+            {label: 'Open KeeWeb', click: restoreMainWindow},
+            {label: 'Quit KeeWeb', click: closeMainWindow}
         ]);
         appIcon.setContextMenu(contextMenu);
         appIcon.setToolTip('KeeWeb');
     }
 };
-app.getMainWindow = function() {
+app.getMainWindow = function () {
     return mainWindow;
 };
+app.emitBackboneEvent = emitBackboneEvent;
+
+function checkSingleInstance() {
+    var shouldQuit = app.makeSingleInstance((/* commandLine, workingDirectory */) => {
+        restoreMainWindow();
+    });
+
+    if (shouldQuit) {
+        app.quit();
+    }
+    return shouldQuit;
+}
 
 function setAppOptions() {
     app.commandLine.appendSwitch('disable-background-timer-throttling');
 }
 
 function createMainWindow() {
-    mainWindow = new BrowserWindow({
+    mainWindow = new electron.BrowserWindow({
         show: false,
-        width: 1000, height: 700, 'min-width': 700, 'min-height': 400,
-        icon: path.join(__dirname, 'icon.png')
+        width: 1000, height: 700, minWidth: 700, minHeight: 400,
+        icon: path.join(__dirname, 'icon.png'),
+        webPreferences: {
+            backgroundThrottling: false
+        }
     });
     setMenu();
-    mainWindow.loadURL('file://' + htmlPath);
-    mainWindow.webContents.on('dom-ready', function() {
-        setTimeout(function() {
+    mainWindow.loadURL(htmlPath);
+    mainWindow.webContents.on('dom-ready', () => {
+        setTimeout(() => {
             mainWindow.show();
             ready = true;
             notifyOpenFile();
@@ -113,27 +127,36 @@ function createMainWindow() {
     mainWindow.on('resize', delaySaveMainWindowPosition);
     mainWindow.on('move', delaySaveMainWindowPosition);
     mainWindow.on('close', updateMainWindowPositionIfPending);
-    mainWindow.on('closed', function() {
+    mainWindow.on('blur', mainWindowBlur);
+    mainWindow.on('closed', () => {
         mainWindow = null;
         saveMainWindowPosition();
     });
-    mainWindow.on('minimize', function() {
+    mainWindow.on('minimize', () => {
         emitBackboneEvent('launcher-minimize');
     });
     restoreMainWindowPosition();
 }
 
 function restoreMainWindow() {
-    appIcon.destroy();
-    appIcon = null;
-    mainWindow.restore();
+    destroyAppIcon();
+    if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+    }
     mainWindow.setSkipTaskbar(false);
+    mainWindow.focus();
 }
 
 function closeMainWindow() {
-    appIcon.destroy();
-    appIcon = null;
+    destroyAppIcon();
     emitBackboneEvent('launcher-exit-request');
+}
+
+function destroyAppIcon() {
+    if (appIcon) {
+        appIcon.destroy();
+        appIcon = null;
+    }
 }
 
 function delaySaveMainWindowPosition() {
@@ -164,7 +187,7 @@ function updateMainWindowPosition() {
     }
     mainWindowPosition.maximized = mainWindow.isMaximized();
     mainWindowPosition.fullScreen = mainWindow.isFullScreen();
-    mainWindowPosition.displayBounds = require('screen').getDisplayMatching(bounds).bounds;
+    mainWindowPosition.displayBounds = require('electron').screen.getDisplayMatching(bounds).bounds;
     mainWindowPosition.changed = true;
 }
 
@@ -179,12 +202,12 @@ function saveMainWindowPosition() {
 }
 
 function restoreMainWindowPosition() {
-    fs.readFile(windowPositionFileName, 'utf8', function(err, data) {
+    fs.readFile(windowPositionFileName, 'utf8', (e, data) => {
         if (data) {
             mainWindowPosition = JSON.parse(data);
             if (mainWindow && mainWindowPosition) {
                 if (mainWindowPosition.width && mainWindowPosition.height) {
-                    var displayBounds = require('screen').getDisplayMatching(mainWindowPosition).bounds;
+                    var displayBounds = require('electron').screen.getDisplayMatching(mainWindowPosition).bounds;
                     var db = mainWindowPosition.displayBounds;
                     if (displayBounds.x === db.x && displayBounds.y === db.y &&
                         displayBounds.width === db.width && displayBounds.height === db.height) {
@@ -198,13 +221,18 @@ function restoreMainWindowPosition() {
     });
 }
 
-function emitBackboneEvent(e) {
-    mainWindow.webContents.executeJavaScript('Backbone.trigger("' + e + '");');
+function mainWindowBlur() {
+    emitBackboneEvent('main-window-blur');
+}
+
+function emitBackboneEvent(e, arg) {
+    arg = JSON.stringify(arg);
+    mainWindow.webContents.executeJavaScript(`Backbone.trigger('${e}', ${arg});`);
 }
 
 function setMenu() {
     if (process.platform === 'darwin') {
-        var name = require('app').getName();
+        var name = require('electron').app.getName();
         var template = [
             {
                 label: name,
@@ -233,8 +261,8 @@ function setMenu() {
                 ]
             }
         ];
-        var menu = Menu.buildFromTemplate(template);
-        Menu.setApplicationMenu(menu);
+        var menu = electron.Menu.buildFromTemplate(template);
+        electron.Menu.setApplicationMenu(menu);
     }
 }
 
@@ -252,15 +280,25 @@ function setGlobalShortcuts() {
     var shortcuts = {
         C: 'copy-password',
         B: 'copy-user',
-        U: 'copy-url'
+        U: 'copy-url',
+        T: 'auto-type'
     };
-    Object.keys(shortcuts).forEach(function(key) {
+    Object.keys(shortcuts).forEach(key => {
         var shortcut = shortcutModifiers + key;
         var eventName = shortcuts[key];
         try {
-            globalShortcut.register(shortcut, function () {
+            electron.globalShortcut.register(shortcut, () => {
                 emitBackboneEvent(eventName);
             });
         } catch (e) {}
+    });
+}
+
+function subscribePowerEvents() {
+    electron.powerMonitor.on('suspend', () => {
+        emitBackboneEvent('power-monitor-suspend');
+    });
+    electron.powerMonitor.on('resume', () => {
+        emitBackboneEvent('power-monitor-resume');
     });
 }

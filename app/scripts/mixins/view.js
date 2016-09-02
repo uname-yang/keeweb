@@ -31,6 +31,10 @@ _.extend(Backbone.View.prototype, {
         return this._hidden;
     },
 
+    isVisible: function() {
+        return !this._hidden;
+    },
+
     afterPaint: function(callback) {
         this.requestAnimationFrame(function() {
             this.requestAnimationFrame(callback);
@@ -69,25 +73,29 @@ _.extend(Backbone.View.prototype, {
 
     remove: function() {
         this.trigger('remove');
+        this.removeInnerViews();
+        if (this.scroll) {
+            try {
+                this.scroll.dispose();
+            } catch (e) { }
+        }
+        Tip.hideTips(this.$el);
+        this._parentRemove(arguments);
+    },
+
+    removeInnerViews: function() {
         if (this.views) {
-            _.each(this.views, function(view) {
+            _.each(this.views, view => {
                 if (view) {
                     if (view instanceof Backbone.View) {
                         view.remove();
                     } else if (view.length) {
-                        view.forEach(function (v) {
-                            v.remove();
-                        });
+                        view.forEach(v => v.remove());
                     }
                 }
             });
+            this.views = {};
         }
-        if (this.scroll) {
-            try { this.scroll.dispose(); }
-            catch (e) { }
-        }
-        Tip.hideTips(this.$el);
-        this._parentRemove(arguments);
     },
 
     deferRender: function() {

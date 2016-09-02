@@ -37,39 +37,42 @@ _.extend(StorageBase.prototype, {
         return this;
     },
 
+    setEnabled: function(enabled) {
+        this.enabled = enabled;
+    },
+
     _xhr: function(config) {
         var xhr = new XMLHttpRequest();
         if (config.responseType) {
             xhr.responseType = config.responseType;
         }
         var statuses = config.statuses || [200];
-        var that = this;
-        xhr.addEventListener('load', function() {
+        xhr.addEventListener('load', () => {
             if (statuses.indexOf(xhr.status) >= 0) {
                 return config.success && config.success(xhr.response, xhr);
             }
-            if (xhr.status === 401 && that._oauthToken) {
-                that._oauthRefreshToken(function(err) {
+            if (xhr.status === 401 && this._oauthToken) {
+                this._oauthRefreshToken(err => {
                     if (err) {
                         return config.error && config.error('unauthorized', xhr);
                     } else {
                         config.tryNum = (config.tryNum || 0) + 1;
                         if (config.tryNum >= MaxRequestRetries) {
-                            that.logger.info('Too many authorize attempts, fail request', config.url);
+                            this.logger.info('Too many authorize attempts, fail request', config.url);
                             return config.error && config.error('unauthorized', xhr);
                         }
-                        that.logger.info('Repeat request, try #' + config.tryNum, config.url);
-                        that._xhr(config);
+                        this.logger.info('Repeat request, try #' + config.tryNum, config.url);
+                        this._xhr(config);
                     }
                 });
             } else {
                 return config.error && config.error('http status ' + xhr.status, xhr);
             }
         });
-        xhr.addEventListener('error', function() {
+        xhr.addEventListener('error', () => {
             return config.error && config.error('network error', xhr);
         });
-        xhr.addEventListener('timeout', function() {
+        xhr.addEventListener('timeout', () => {
             return config.error && config.error('timeout', xhr);
         });
         xhr.open(config.method || 'GET', config.url);
@@ -77,7 +80,7 @@ _.extend(StorageBase.prototype, {
             xhr.setRequestHeader('Authorization',
                 this._oauthToken.tokenType + ' ' + this._oauthToken.accessToken);
         }
-        _.forEach(config.headers, function(value, key) {
+        _.forEach(config.headers, (value, key) => {
             xhr.setRequestHeader(key, value);
         });
         xhr.send(config.data);
@@ -103,13 +106,9 @@ _.extend(StorageBase.prototype, {
             scrollbars: 'yes',
             location: 'yes'
         };
-        settings = Object.keys(settings).map(function(key) { return key + '=' + settings[key]; }).join(',');
+        settings = Object.keys(settings).map(key => key + '=' + settings[key]).join(',');
 
-        var win = window.open(url, title, settings);
-        if (win && win.focus) {
-            win.focus();
-        }
-        return win;
+        return window.open(url, title, settings);
     },
 
     _getOauthRedirectUrl: function() {
@@ -121,14 +120,13 @@ _.extend(StorageBase.prototype, {
     },
 
     _oauthAuthorize: function(callback) {
-        var that = this;
-        if (that._oauthToken && !that._oauthToken.expired) {
+        if (this._oauthToken && !this._oauthToken.expired) {
             return callback();
         }
         var opts = this._getOAuthConfig();
-        var oldToken = that.runtimeData.get(that.name + 'OAuthToken');
+        var oldToken = this.runtimeData.get(this.name + 'OAuthToken');
         if (oldToken && !oldToken.expired) {
-            that._oauthToken = oldToken;
+            this._oauthToken = oldToken;
             callback();
             return;
         }
@@ -136,30 +134,30 @@ _.extend(StorageBase.prototype, {
             .replace('{cid}', encodeURIComponent(opts.clientId))
             .replace('{scope}', encodeURIComponent(opts.scope))
             .replace('{url}', encodeURIComponent(this._getOauthRedirectUrl()));
-        that.logger.debug('OAuth popup opened');
-        if (!that._openPopup(url, 'OAuth', opts.width, opts.height)) {
+        this.logger.debug('OAuth popup opened');
+        if (!this._openPopup(url, 'OAuth', opts.width, opts.height)) {
             callback('cannot open popup');
         }
-        var popupClosed = function() {
+        var popupClosed = () => {
             Backbone.off('popup-closed', popupClosed);
             window.removeEventListener('message', windowMessage);
-            that.logger.error('OAuth error', 'popup closed');
+            this.logger.error('OAuth error', 'popup closed');
             callback('popup closed');
         };
-        var windowMessage = function(e) {
+        var windowMessage = e => {
             if (!e.data) {
                 return;
             }
             Backbone.off('popup-closed', popupClosed);
             window.removeEventListener('message', windowMessage);
-            var token = that._oauthMsgToToken(e.data);
+            var token = this._oauthMsgToToken(e.data);
             if (token.error) {
-                that.logger.error('OAuth error', token.error, token.errorDescription);
+                this.logger.error('OAuth error', token.error, token.errorDescription);
                 callback(token.error);
             } else {
-                that._oauthToken = token;
-                that.runtimeData.set(that.name + 'OAuthToken', token);
-                that.logger.debug('OAuth success');
+                this._oauthToken = token;
+                this.runtimeData.set(this.name + 'OAuthToken', token);
+                this.logger.debug('OAuth success');
                 callback();
             }
         };
@@ -168,7 +166,6 @@ _.extend(StorageBase.prototype, {
     },
 
     _oauthMsgToToken: function(data) {
-        // jshint camelcase:false
         if (data.error || !data.token_type) {
             return { error: data.error || 'no token', errorDescription: data.error_description };
         }
@@ -186,6 +183,18 @@ _.extend(StorageBase.prototype, {
         this._oauthToken.expired = true;
         this.runtimeData.set(this.name + 'OAuthToken', this._oauthToken);
         this._oauthAuthorize(callback);
+    },
+
+    _oauthRevokeToken: function(url) {
+        var token = this.runtimeData.get(this.name + 'OAuthToken');
+        if (token) {
+            this._xhr({
+                url: url.replace('{token}', token.accessToken),
+                statuses: [200, 401]
+            });
+            this.runtimeData.unset(this.name + 'OAuthToken');
+            this._oauthToken = null;
+        }
     }
 });
 

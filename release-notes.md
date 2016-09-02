@@ -1,16 +1,83 @@
 Release notes
 -------------
 
-##### v1.1.2 (2016-04-10)
-Hotfix  
+##### v1.3.0 (2016-09-01)
+Generator presets, auto-type and ui improvements  
+`+` auto-type improvements  
+`+` context menu  
+`+` solarized themes  
+`+` generator presets  
+`+` group reorder  
+`+` auto backups  
+`+` select field contents on search hotkey  
+`+` option to preload default config and file  
+`+` save displayed table columns  
+`+` confirmation in password change dialog  
+`+` inline generator keyboard management  
+`+` field references decoding  
+`+` copy entries  
+`+` option to disable open, new and demo buttons  
+`-` fix app redraw in background  
+`-` fix idle timer on computer sleep  
+`-` fix storage popup when no action is required  
+`-` fix loading raw 32-byte and 64-byte keyfiles  
+`-` fix data loss on exit with focused field  
+
+##### v1.2.4 (2016-07-20)
+`+` digital signature in installer  
+`-` fix save to file  
+`-` mark file as modified on trash empty  
+
+##### v1.2.3 (2016-07-17)
+`+` option to skip lock on minimize under mac  
+`-` fix dropbox popup error  
+`-` fix auto-type input  
+
+##### v1.2.2 (2016-07-14)
+`-` fix special keys auto-type in linux  
+
+##### v1.2.1 (2016-07-12)
+`-` fix storage auth popups on desktop  
+
+##### v1.2.0 (2016-07-11)
+Auto-type, ui improvements  
+`+` allow selecting attachments with click  
+`+` save groups collapsed/expanded state  
+`+` docker container  
+`+` edit and remove tags  
+`+` register file associations  
+`+` high contrast theme  
+`+` ability to increase font size  
+`+` improved start page ux on mobile  
+`+` option to show app logs  
+`+` group info in entry details  
+`+` logout from remote storages on disable  
+`+` select file for new records  
+`+` customizable table view  
+`+` ability to load json config  
+`*` don't check updates at startup  
+`*` repos moved to github organization account  
+`*` allow opening same file twice  
+`*` local files are not saved to cache  
+`-` prevent second app instance on windows  
+
+##### v1.1.4 (2016-04-21)
+`-` fixed Firefox loading issues  
+
+##### v1.1.3 (2016-04-21)
+`+` google drive stability improvements  
+`+` fix some layout bugs  
+`-` fix generator preset for empty passwords  
+`+` export settings get/set interface  
+
+##### v1.1.2 (2016-04-10)  
 `+` option to try beta version in desktop app  
 `-` fix notes field text color  
 `-` fix some console assertions  
 `-` fix message about not found files  
 `-` fix deletion to trash when there's no trash folder  
 
-##### v1.1.1 (2016-04-07)
-Hotfix  
+##### v1.1.1 (2016-04-07)  
 `+` minimize app on linux  
 `+` display remembered keyfile name  
 `-` fix #182: save window position on Windows  
@@ -52,15 +119,13 @@ Storage providers, one-time passwords, usability improvements
 Workaround for Chrome bug  
 `-` #110: fix font rendering in Chrome  
 
-##### v1.0.3 (2016-02-23)
-Hotfix  
+##### v1.0.3 (2016-02-23)  
 `+` #94: warn user about local files  
 `-` #92: save files on exit  
 `-` #95: unlock by opening settings  
 `-` fix crash on arch linux startup  
 
-##### v1.0.2 (2016-02-17)
-Hotfix  
+##### v1.0.2 (2016-02-17)  
 `-` #80: dragdrop bug  
 
 ##### v1.0.1 (2016-02-14)

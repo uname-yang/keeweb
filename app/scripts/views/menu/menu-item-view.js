@@ -21,7 +21,9 @@ var MenuItemView = Backbone.View.extend({
         'dragstart': 'dragstart',
         'dragover': 'dragover',
         'dragleave': 'dragleave',
-        'drop' : 'drop'
+        'drop': 'drop',
+        'dragover .menu__item-drag-top': 'dragoverTop',
+        'dragleave .menu__item-drag-top': 'dragleaveTop'
     },
 
     iconEl: null,
@@ -49,7 +51,7 @@ var MenuItemView = Backbone.View.extend({
     render: function() {
         this.removeInnerViews();
         this.renderTemplate(this.model.attributes);
-        this.iconEl = this.$el.find('i');
+        this.iconEl = this.$el.find('i.menu__item-icon');
         var items = this.model.get('items');
         if (items) {
             items.forEach(function (item) {
@@ -66,7 +68,7 @@ var MenuItemView = Backbone.View.extend({
         this.itemViews.push(new MenuItemView({el: this.$el, model: item}).render());
     },
 
-    remove : function() {
+    remove: function() {
         this.removeInnerViews();
         var shortcut = this.model.get('shortcut');
         if (shortcut) {
@@ -79,7 +81,7 @@ var MenuItemView = Backbone.View.extend({
     },
 
     removeInnerViews: function() {
-        this.itemViews.forEach(function(itemView) { itemView.remove(); });
+        this.itemViews.forEach(itemView => itemView.remove());
         this.itemViews = [];
     },
 
@@ -137,7 +139,7 @@ var MenuItemView = Backbone.View.extend({
         var options = this.model.get('options');
         var value = $(e.target).data('value');
         if (options && options.length) {
-            var option = options.find(function(op) { return op.get('value') === value; });
+            var option = options.find(op => op.get('value') === value);
             if (option) {
                 Backbone.trigger('menu-select', { item: this.model, option: option });
             }
@@ -156,7 +158,14 @@ var MenuItemView = Backbone.View.extend({
     editItem: function(e) {
         if (this.model.get('active') && this.model.get('editable')) {
             e.stopPropagation();
-            Backbone.trigger('edit-group', this.model);
+            switch (this.model.get('filterKey')) {
+                case 'tag':
+                    Backbone.trigger('edit-tag', this.model);
+                    break;
+                case 'group':
+                    Backbone.trigger('edit-group', this.model);
+                    break;
+            }
         }
     },
 
@@ -172,11 +181,12 @@ var MenuItemView = Backbone.View.extend({
         });
     },
 
-    dropAllowed: function(e) {
-        return ['text/group', 'text/entry'].indexOf(e.originalEvent.dataTransfer.types[0]) >= 0;
+    dropAllowed(e) {
+        var types = e.originalEvent.dataTransfer.types;
+        return types.indexOf('text/group') >= 0 || types.indexOf('text/entry') >= 0;
     },
 
-    dragstart: function(e) {
+    dragstart(e) {
         e.stopPropagation();
         if (this.model.get('drag')) {
             e.originalEvent.dataTransfer.setData('text/group', this.model.id);
@@ -185,7 +195,7 @@ var MenuItemView = Backbone.View.extend({
         }
     },
 
-    dragover: function(e) {
+    dragover(e) {
         e.stopPropagation();
         if (this.model.get('drop') && this.dropAllowed(e)) {
             e.preventDefault();
@@ -193,24 +203,44 @@ var MenuItemView = Backbone.View.extend({
         }
     },
 
-    dragleave: function(e) {
+    dragleave(e) {
         e.stopPropagation();
         if (this.model.get('drop') && this.dropAllowed(e)) {
-            this.$el.removeClass('menu__item--drag');
+            this.$el.removeClass('menu__item--drag menu__item--drag-top');
         }
     },
 
-    drop: function(e) {
+    drop(e) {
         e.stopPropagation();
         if (this.model.get('drop') && this.dropAllowed(e)) {
-            this.$el.removeClass('menu__item--drag');
-            if (this.model.get('filterKey') === 'trash') {
-                DragDropInfo.dragObject.moveToTrash();
-                Backbone.trigger('refresh');
+            let isTop = this.$el.hasClass('menu__item--drag-top');
+            this.$el.removeClass('menu__item--drag menu__item--drag-top');
+            if (isTop) {
+                this.model.moveToTop(DragDropInfo.dragObject);
             } else {
-                this.model.moveHere(DragDropInfo.dragObject);
+                if (this.model.get('filterKey') === 'trash') {
+                    DragDropInfo.dragObject.moveToTrash();
+                } else {
+                    this.model.moveHere(DragDropInfo.dragObject);
+                }
             }
             Backbone.trigger('refresh');
+        }
+    },
+
+    dropTopAllowed(e) {
+        return e.originalEvent.dataTransfer.types.indexOf('text/group') >= 0;
+    },
+
+    dragoverTop(e) {
+        if (this.dropTopAllowed(e)) {
+            this.$el.addClass('menu__item--drag-top');
+        }
+    },
+
+    dragleaveTop(e) {
+        if (this.dropTopAllowed(e)) {
+            this.$el.removeClass('menu__item--drag-top');
         }
     }
 });
