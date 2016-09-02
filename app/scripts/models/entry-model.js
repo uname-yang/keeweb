@@ -10,9 +10,13 @@ var Backbone = require('backbone'),
 
 var EntryModel = Backbone.Model.extend({
     defaults: {},
-    urlRegex: /^https?:\/\//i,
 
-    builtInFields: ['Title', 'Password', 'Notes', 'URL', 'UserName', 'TOTP Seed', 'TOTP Settings'],
+    urlRegex: /^https?:\/\//i,
+    fieldRefRegex: /^\{REF:([TNPAU])@I:(\w{32})}$/,
+
+    builtInFields: ['Title', 'Password', 'UserName', 'URL', 'Notes', 'TOTP Seed', 'TOTP Settings'],
+    fieldRefFields: ['title', 'password', 'user', 'url', 'notes'],
+    fieldRefIds: { T: 'Title', U: 'UserName', P: 'Password', A: 'URL', N: 'Notes' },
 
     initialize: function() {
     },
@@ -21,16 +25,20 @@ var EntryModel = Backbone.Model.extend({
         this.entry = entry;
         this.group = group;
         this.file = file;
-        if (this.id === entry.uuid.id) {
+        if (this.get('uuid') === entry.uuid.id) {
             this._checkUpdatedEntry();
         }
+        // we cannot calculate field references now because database index has not yet been built
+        this.hasFieldRefs = false;
         this._fillByEntry();
+        this.hasFieldRefs = true;
     },
 
     _fillByEntry: function() {
         var entry = this.entry;
-        this.set({id: entry.uuid.id}, {silent: true});
+        this.set({id: this.file.subId(entry.uuid.id), uuid: entry.uuid.id}, {silent: true});
         this.fileName = this.file.get('name');
+        this.groupName = this.group.get('title');
         this.title = entry.fields.Title || '';
         this.password = entry.fields.Password || kdbxweb.ProtectedValue.fromString('');
         this.notes = entry.fields.Notes || '';
@@ -52,11 +60,18 @@ var EntryModel = Backbone.Model.extend({
         this._buildSearchText();
         this._buildSearchTags();
         this._buildSearchColor();
+        this._buildAutoType();
+        if (this.hasFieldRefs) {
+            this.resolveFieldReferences();
+        }
     },
 
     _checkUpdatedEntry: function() {
         if (this.isJustCreated) {
             this.isJustCreated = false;
+        }
+        if (this.canBeDeleted) {
+            this.canBeDeleted = false;
         }
         if (this.unsaved && +this.updated !== +this.entry.times.lastModTime) {
             this.unsaved = false;
@@ -65,15 +80,15 @@ var EntryModel = Backbone.Model.extend({
 
     _buildSearchText: function() {
         var text = '';
-        _.forEach(this.entry.fields, function(value) {
+        _.forEach(this.entry.fields, value => {
             if (typeof value === 'string') {
                 text += value.toLowerCase() + '\n';
             }
         });
-        this.entry.tags.forEach(function(tag) {
+        this.entry.tags.forEach(tag => {
             text += tag.toLowerCase() + '\n';
         });
-        this.attachments.forEach(function(att) {
+        this.attachments.forEach(att => {
             text += att.title.toLowerCase() + '\n';
         });
         this.searchText = text;
@@ -89,11 +104,22 @@ var EntryModel = Backbone.Model.extend({
     },
 
     _buildSearchTags: function() {
-        this.searchTags = this.entry.tags.map(function(tag) { return tag.toLowerCase(); });
+        this.searchTags = this.entry.tags.map(tag => tag.toLowerCase());
     },
 
     _buildSearchColor: function() {
         this.searchColor = this.color;
+    },
+
+    _buildAutoType: function() {
+        this.autoTypeEnabled = this.entry.autoType.enabled;
+        this.autoTypeObfuscation = this.entry.autoType.obfuscation === kdbxweb.Consts.AutoTypeObfuscationOptions.UseClipboard;
+        this.autoTypeSequence = this.entry.autoType.defaultSequence;
+        this.autoTypeWindows = this.entry.autoType.items.map(this._convertAutoTypeItem);
+    },
+
+    _convertAutoTypeItem: function(item) {
+        return { window: item.window, sequence: item.keystrokeSequence };
     },
 
     _iconFromId: function(id) {
@@ -140,6 +166,15 @@ var EntryModel = Backbone.Model.extend({
         this.entry.times.update();
     },
 
+    setSaved: function() {
+        if (this.unsaved) {
+            this.unsaved = false;
+        }
+        if (this.canBeDeleted) {
+            this.canBeDeleted = false;
+        }
+    },
+
     matches: function(filter) {
         return !filter ||
             (!filter.tagLower || this.searchTags.indexOf(filter.tagLower) >= 0) &&
@@ -151,8 +186,9 @@ var EntryModel = Backbone.Model.extend({
         var adv = filter.advanced;
         var search, match;
         if (adv.regex) {
-            try { search = new RegExp(filter.text, adv.cs ? '' : 'i'); }
-            catch (e) { return false; }
+            try {
+                search = new RegExp(filter.text, adv.cs ? '' : 'i');
+            } catch (e) { return false; }
             match = this.matchRegex;
         } else if (adv.cs) {
             search = filter.text;
@@ -216,7 +252,7 @@ var EntryModel = Backbone.Model.extend({
         if (adv.other || adv.protect) {
             var builtInFields = this.builtInFields;
             var fieldNames = Object.keys(entry.fields);
-            matches = fieldNames.some(function (field) {
+            matches = fieldNames.some(field => {
                 if (builtInFields.indexOf(field) >= 0) {
                     return false;
                 }
@@ -233,6 +269,67 @@ var EntryModel = Backbone.Model.extend({
     matchField: function(entry, field, compare, search) {
         var val = entry.fields[field];
         return val ? compare(val, search) : false;
+    },
+
+    resolveFieldReferences: function() {
+        this.hasFieldRefs = false;
+        this.fieldRefFields.forEach(field => {
+            let fieldValue = this[field];
+            let refValue = this._resolveFieldReference(fieldValue);
+            if (refValue !== undefined) {
+                this[field] = refValue;
+                this.hasFieldRefs = true;
+            }
+        });
+    },
+
+    getFieldValue: function(field) {
+        field = field.toLowerCase();
+        let resolvedField;
+        Object.keys(this.entry.fields).some(entryField => {
+            if (entryField.toLowerCase() === field) {
+                resolvedField = entryField;
+                return true;
+            }
+        });
+        if (resolvedField) {
+            let fieldValue = this.entry.fields[resolvedField];
+            let refValue = this._resolveFieldReference(fieldValue);
+            if (refValue !== undefined) {
+                fieldValue = refValue;
+            }
+            return fieldValue;
+        }
+    },
+
+    _resolveFieldReference: function(fieldValue) {
+        if (!fieldValue) {
+            return;
+        }
+        if (fieldValue.isProtected && fieldValue.isFieldReference()) {
+            fieldValue = fieldValue.getText();
+        }
+        if (typeof fieldValue !== 'string') {
+            return;
+        }
+        let match = fieldValue.match(this.fieldRefRegex);
+        if (!match) {
+            return;
+        }
+        return this._getReferenceValue(match[1], match[2]);
+    },
+
+    _getReferenceValue: function(fieldRefId, idStr) {
+        let id = new Uint8Array(16);
+        for (let i = 0; i < 16; i++) {
+            id[i] = parseInt(idStr.substr(i * 2, 2), 16);
+        }
+        let uuid = new kdbxweb.KdbxUuid(id);
+        let entry = this.file.getEntry(this.file.subId(uuid.id));
+        if (!entry) {
+            return;
+        }
+        return entry.entry.fields[this.fieldRefIds[fieldRefId]];
     },
 
     setColor: function(color) {
@@ -264,6 +361,19 @@ var EntryModel = Backbone.Model.extend({
     setTags: function(tags) {
         this._entryModified();
         this.entry.tags = tags;
+        this._fillByEntry();
+    },
+
+    renameTag: function(from, to) {
+        var ix = _.findIndex(this.entry.tags, tag => tag.toLowerCase() === from.toLowerCase());
+        if (ix < 0) {
+            return;
+        }
+        this._entryModified();
+        this.entry.tags.splice(ix, 1);
+        if (to) {
+            this.entry.tags.push(to);
+        }
         this._fillByEntry();
     },
 
@@ -308,7 +418,7 @@ var EntryModel = Backbone.Model.extend({
             return EntryModel.fromEntry(rec, this.group, this.file);
         }, this);
         history.push(this);
-        history.sort(function(x, y) { return x.updated - y.updated; });
+        history.sort((x, y) => x.updated - y.updated);
         return history;
     },
 
@@ -363,11 +473,28 @@ var EntryModel = Backbone.Model.extend({
     },
 
     removeWithoutHistory: function() {
-        var ix = this.group.group.entries.indexOf(this.entry);
-        if (ix >= 0) {
-            this.group.group.entries.splice(ix, 1);
+        if (this.canBeDeleted) {
+            var ix = this.group.group.entries.indexOf(this.entry);
+            if (ix >= 0) {
+                this.group.group.entries.splice(ix, 1);
+            }
+            this.file.reload();
         }
-        this.file.reload();
+    },
+
+    moveToFile: function(file) {
+        if (this.canBeDeleted) {
+            this.removeWithoutHistory();
+            this.group = file.get('groups').first();
+            this.file = file;
+            this._fillByEntry();
+            this.entry.times.update();
+            this.group.group.entries.push(this.entry);
+            this.group.addEntry(this);
+            this.isJustCreated = true;
+            this.unsaved = true;
+            this.file.setModified();
+        }
     },
 
     initOtpGenerator: function() {
@@ -377,12 +504,12 @@ var EntryModel = Backbone.Model.extend({
             if (otpUrl.isProtected) {
                 otpUrl = otpUrl.getText();
             }
-            if (Otp.isSecret(otpUrl)) {
-                otpUrl = Otp.makeUrl(otpUrl);
+            if (Otp.isSecret(otpUrl.replace(/\s/g, ''))) {
+                otpUrl = Otp.makeUrl(otpUrl.replace(/\s/g, '').toUpperCase());
             } else if (otpUrl.toLowerCase().lastIndexOf('otpauth:', 0) !== 0) {
                 // KeeOTP plugin format
                 var args = {};
-                otpUrl.split('&').forEach(function(part) {
+                otpUrl.split('&').forEach(part => {
                     var parts = part.split('=', 2);
                     args[parts[0]] = decodeURIComponent(parts[1]).replace(/=/g, '');
                 });
@@ -438,6 +565,60 @@ var EntryModel = Backbone.Model.extend({
         this.setField('otp', url ? kdbxweb.ProtectedValue.fromString(url) : undefined);
         delete this.entry.fields['TOTP Seed'];
         delete this.entry.fields['TOTP Settings'];
+    },
+
+    getEffectiveEnableAutoType: function() {
+        if (typeof this.entry.autoType.enabled === 'boolean') {
+            return this.entry.autoType.enabled;
+        }
+        return this.group.getEffectiveEnableAutoType();
+    },
+
+    getEffectiveAutoTypeSeq: function() {
+        return this.entry.autoType.defaultSequence || this.group.getEffectiveAutoTypeSeq();
+    },
+
+    setEnableAutoType: function(enabled) {
+        this._entryModified();
+        if (enabled === this.group.getEffectiveEnableAutoType()) {
+            enabled = null;
+        }
+        this.entry.autoType.enabled = enabled;
+        this._buildAutoType();
+    },
+
+    setAutoTypeObfuscation: function(enabled) {
+        this._entryModified();
+        this.entry.autoType.obfuscation =
+            enabled ? kdbxweb.Consts.AutoTypeObfuscationOptions.UseClipboard : kdbxweb.Consts.AutoTypeObfuscationOptions.None;
+        this._buildAutoType();
+    },
+
+    setAutoTypeSeq: function(seq) {
+        this._entryModified();
+        this.entry.autoType.defaultSequence = seq || undefined;
+        this._buildAutoType();
+    },
+
+    getGroupPath: function() {
+        var group = this.group;
+        var groupPath = [];
+        while (group) {
+            groupPath.unshift(group.get('title'));
+            group = group.parentGroup;
+        }
+        return groupPath;
+    },
+
+    cloneEntry: function(nameSuffix) {
+        let newEntry = EntryModel.newEntry(this.group, this.file);
+        newEntry.entry.copyFrom(this.entry);
+        newEntry.entry.uuid = kdbxweb.KdbxUuid.random();
+        newEntry.entry.times.update();
+        newEntry.entry.fields.Title = this.title + nameSuffix;
+        newEntry._fillByEntry();
+        this.file.reload();
+        return newEntry;
     }
 });
 
@@ -454,6 +635,7 @@ EntryModel.newEntry = function(group, file) {
     model.entry.times.update();
     model.unsaved = true;
     model.isJustCreated = true;
+    model.canBeDeleted = true;
     group.addEntry(model);
     file.setModified();
     return model;

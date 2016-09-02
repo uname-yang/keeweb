@@ -5,7 +5,10 @@
         </div>
         <div class="list__search-field-wrap">
             <input type="text" class="list__search-field input-padding-right" autocomplete="off">
-            <i class="list__search-icon-search fa fa-search" title="{{res 'searchAdvTitle'}}"></i>
+            <div class="list__search-icon-search" title="{{res 'searchAdvTitle'}}">
+                <i class="fa fa-search"></i>
+                <i class="fa fa-caret-down"></i>
+            </div>
         </div>
         <div class="list__search-btn-new" title="{{res 'searchAddNew'}}">
             <i class="fa fa-plus"></i>
@@ -35,7 +38,7 @@
             <div class="list__search-check"><input type="checkbox" id="list__search-adv-check-regex" data-id="regex"
                 {{#if adv.regex}}checked{{/if}}><label for="list__search-adv-check-regex">{{res 'searchRegex'}}</label></div>
             <div class="list__search-check"><input type="checkbox" id="list__search-adv-check-history" data-id="history"
-                {{#if adv.history}}checked{{/if}}><label for="list__search-adv-check-history">{{res 'searchHistory'}}</label></div>
+                {{#if adv.history}}checked{{/if}}><label for="list__search-adv-check-history">{{Res 'history'}}</label></div>
         </div>
     </div>
 </div>

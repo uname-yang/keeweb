@@ -2,7 +2,9 @@
 
 var Backbone = require('backbone'),
     Scrollable = require('../mixins/scrollable'),
-    IconSelectView = require('./icon-select-view');
+    IconSelectView = require('./icon-select-view'),
+    AutoTypeHintView = require('./auto-type-hint-view'),
+    AutoType = require('../auto-type');
 
 var GrpView = Backbone.View.extend({
     template: require('templates/grp.hbs'),
@@ -10,9 +12,12 @@ var GrpView = Backbone.View.extend({
     events: {
         'click .grp__icon': 'showIconsSelect',
         'click .grp__buttons-trash': 'moveToTrash',
-        'click .grp__back-button': 'returnToApp',
+        'click .back-button': 'returnToApp',
         'input #grp__field-title': 'changeTitle',
-        'change #grp__check-search': 'setEnableSearching'
+        'focus #grp__field-auto-type-seq': 'focusAutoTypeSeq',
+        'input #grp__field-auto-type-seq': 'changeAutoTypeSeq',
+        'change #grp__check-search': 'setEnableSearching',
+        'change #grp__check-auto-type': 'setEnableAutoType'
     },
 
     initialize: function() {
@@ -26,15 +31,19 @@ var GrpView = Backbone.View.extend({
                 title: this.model.get('title'),
                 icon: this.model.get('icon') || 'folder',
                 customIcon: this.model.get('customIcon'),
-                enableSearching: this.model.get('enableSearching') !== false,
-                readonly: this.model.get('top')
-            }, { plain: true });
+                enableSearching: this.model.getEffectiveEnableSearching(),
+                readonly: this.model.get('top'),
+                canAutoType: AutoType.enabled,
+                autoTypeSeq: this.model.get('autoTypeSeq'),
+                autoTypeEnabled: this.model.getEffectiveEnableAutoType(),
+                defaultAutoTypeSeq: this.model.getParentEffectiveAutoTypeSeq()
+            }, true);
             if (!this.model.get('title')) {
                 this.$el.find('#grp__field-title').focus();
             }
         }
         this.createScroll({
-            root: this.$el.find('.details__body')[0],
+            root: this.$el.find('.grp')[0],
             scroller: this.$el.find('.scroller')[0],
             bar: this.$el.find('.scroller__bar')[0]
         });
@@ -57,14 +66,32 @@ var GrpView = Backbone.View.extend({
     changeTitle: function(e) {
         var title = $.trim(e.target.value);
         if (title) {
-            if (!this.model.get('top') && e.target.value !== this.model.get('title')) {
-                this.model.setName(e.target.value);
+            if (!this.model.get('top') && title !== this.model.get('title')) {
+                this.model.setName(title);
             }
         } else {
             if (this.model.isJustCreated) {
                 this.model.removeWithoutHistory();
                 Backbone.trigger('edit-group');
             }
+        }
+    },
+
+    changeAutoTypeSeq: function(e) {
+        var el = e.target;
+        var seq = $.trim(el.value);
+        AutoType.validate(null, seq, err => {
+            $(e.target).toggleClass('input--error', !!err);
+            if (!err) {
+                this.model.setAutoTypeSeq(seq);
+            }
+        });
+    },
+
+    focusAutoTypeSeq: function(e) {
+        if (!this.views.hint) {
+            this.views.hint = new AutoTypeHintView({input: e.target}).render();
+            this.views.hint.on('remove', () => { delete this.views.hint; });
         }
     },
 
@@ -105,6 +132,11 @@ var GrpView = Backbone.View.extend({
     setEnableSearching: function(e) {
         var enabled = e.target.checked;
         this.model.setEnableSearching(enabled);
+    },
+
+    setEnableAutoType: function(e) {
+        var enabled = e.target.checked;
+        this.model.setEnableAutoType(enabled);
     },
 
     returnToApp: function() {

@@ -9,3 +9,8 @@ tmp/
 build/
 coverage/
 keys/
+*.user
+bin/
+obj/
+*.xcworkspace/
+xcuserdata/

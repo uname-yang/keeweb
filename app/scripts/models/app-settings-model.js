@@ -6,6 +6,7 @@ var Backbone = require('backbone'),
 var AppSettingsModel = Backbone.Model.extend({
     defaults: {
         theme: 'fb',
+        locale: null,
         expandGroups: true,
         listViewWidth: null,
         menuViewWidth: null,
@@ -25,6 +26,14 @@ var AppSettingsModel = Backbone.Model.extend({
         hideEmptyFields: false,
         skipHttpsWarning: false,
         demoOpened: false,
+        fontSize: 0,
+        tableViewColumns: null,
+        generatorPresets: null,
+        canOpen: true,
+        canOpenDemo: true,
+        canOpenSettings: true,
+        canCreate: true,
+        canImportXml: true,
         dropbox: true,
         webdav: true,
         gdrive: true,
@@ -49,10 +58,5 @@ var AppSettingsModel = Backbone.Model.extend({
 
 AppSettingsModel.instance = new AppSettingsModel();
 AppSettingsModel.instance.load();
-
-window.kwSettings = {
-    get: function(key) { return AppSettingsModel.instance.get(key); },
-    set: function(key, value) { AppSettingsModel.instance.set(key, value); }
-};
 
 module.exports = AppSettingsModel;

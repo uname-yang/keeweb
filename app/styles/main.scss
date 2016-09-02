@@ -7,8 +7,10 @@
 
 @import "base/base";
 
-@import "utils/drag";
+@import "utils/back-button";
 @import "utils/common-dropdown";
+@import "utils/auto-type-hint";
+@import "utils/drag";
 @import "utils/selection";
 
 @import "common/dates";
@@ -21,10 +23,13 @@
 @import "common/tip";
 
 @import "areas/app";
+@import "areas/auto-type";
 @import "areas/details";
 @import "areas/footer";
 @import "areas/grp";
+@import "areas/tag";
 @import "areas/generator";
+@import "areas/generator-presets";
 @import "areas/key-change";
 @import "areas/list";
 @import "areas/menu";

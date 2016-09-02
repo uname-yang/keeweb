@@ -14,7 +14,7 @@ var Tip = function(el, config) {
     this.hide = this.hide.bind(this);
 };
 
-Tip.enabled = FeatureDetector.isDesktop();
+Tip.enabled = !FeatureDetector.isMobile;
 
 Tip.prototype.init = function() {
     if (!Tip.enabled) {
@@ -83,23 +83,21 @@ Tip.prototype.hide = function() {
 };
 
 Tip.prototype.mouseenter = function() {
-    var that = this;
     if (this.showTimeout) {
         return;
     }
-    this.showTimeout = setTimeout(function() {
-        that.showTimeout = null;
-        that.show();
+    this.showTimeout = setTimeout(() => {
+        this.showTimeout = null;
+        this.show();
     }, 200);
 };
 
 Tip.prototype.mouseleave = function() {
-    var that = this;
     if (this.tipEl) {
-        that.tipEl.addClass('tip--hide');
-        this.hideTimeout = setTimeout(function () {
-            that.hideTimeout = null;
-            that.hide();
+        this.tipEl.addClass('tip--hide');
+        this.hideTimeout = setTimeout(() => {
+            this.hideTimeout = null;
+            this.hide();
         }, 500);
     }
     if (this.showTimeout) {
@@ -138,22 +136,36 @@ Tip.createTips = function(container) {
     if (!Tip.enabled) {
         return;
     }
-    container.find('[title]').each(function(ix, el) {
-        var tip = new Tip($(el));
-        tip.init();
-        el._tip = tip;
+    container.find('[title]').each((ix, el) => {
+        Tip.createTip(el);
     });
+};
+
+Tip.createTip = function(el) {
+    if (!Tip.enabled) {
+        return;
+    }
+    var tip = new Tip($(el));
+    tip.init();
+    el._tip = tip;
 };
 
 Tip.hideTips = function(container) {
     if (!Tip.enabled) {
         return;
     }
-    container.find('[data-title]').each(function(ix, el) {
-        if (el._tip) {
-            el._tip.hide();
-        }
+    container.find('[data-title]').each((ix, el) => {
+        Tip.hideTip(el);
     });
+};
+
+Tip.hideTip = function(el) {
+    if (!Tip.enabled) {
+        return;
+    }
+    if (el._tip) {
+        el._tip.hide();
+    }
 };
 
 module.exports = Tip;

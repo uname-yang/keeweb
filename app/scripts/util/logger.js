@@ -1,8 +1,5 @@
 'use strict';
 
-/* globals console */
-/* globals performance */
-
 var Level = {
     Off: 0,
     Error: 1,
@@ -11,6 +8,10 @@ var Level = {
     Debug: 4,
     All: 5
 };
+
+var MaxLogsToSave = 100;
+
+var lastLogs = [];
 
 var Logger = function(name, id) {
     this.prefix = (name ? name + (id ? ':' + id : '') : 'default');
@@ -32,28 +33,32 @@ Logger.prototype.getPrefix = function() {
 Logger.prototype.debug = function() {
     arguments[0] = this.getPrefix() + arguments[0];
     if (this.level > Level.Debug) {
-        console.debug.apply(console, arguments);
+        Logger.saveLast('debug', arguments);
+        console.debug.apply(console, arguments); // eslint-disable-line no-console
     }
 };
 
 Logger.prototype.info = function() {
     arguments[0] = this.getPrefix() + arguments[0];
     if (this.level > Level.Info) {
-        console.log.apply(console, arguments);
+        Logger.saveLast('info', arguments);
+        console.log.apply(console, arguments); // eslint-disable-line no-console
     }
 };
 
 Logger.prototype.warn = function() {
     arguments[0] = this.getPrefix() + arguments[0];
     if (this.level > Level.Warn) {
-        console.warn.apply(console, arguments);
+        Logger.saveLast('warn', arguments);
+        console.warn.apply(console, arguments); // eslint-disable-line no-console
     }
 };
 
 Logger.prototype.error = function() {
     arguments[0] = this.getPrefix() + arguments[0];
     if (this.level > Level.Error) {
-        console.error.apply(console, arguments);
+        Logger.saveLast('error', arguments);
+        console.error.apply(console, arguments); // eslint-disable-line no-console
     }
 };
 
@@ -63,6 +68,17 @@ Logger.prototype.setLevel = function(level) {
 
 Logger.prototype.getLevel = function() {
     return this.level;
+};
+
+Logger.saveLast = function(level, args) {
+    lastLogs.push({ level: level, args: Array.prototype.slice.call(args) });
+    if (lastLogs.length > MaxLogsToSave) {
+        lastLogs.shift();
+    }
+};
+
+Logger.getLast = function() {
+    return lastLogs;
 };
 
 Logger.Level = Level;

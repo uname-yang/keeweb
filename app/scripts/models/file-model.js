@@ -13,6 +13,7 @@ var logger = new Logger('file');
 var FileModel = Backbone.Model.extend({
     defaults: {
         id: '',
+        uuid: '',
         name: '',
         keyFileName: '',
         passwordLength: 0,
@@ -29,10 +30,11 @@ var FileModel = Backbone.Model.extend({
         oldKeyFileName: '',
         passwordChanged: false,
         keyFileChanged: false,
+        keyChangeForce: -1,
         syncing: false,
         syncError: null,
         syncDate: null,
-        cacheId: null
+        backup: null
     },
 
     db: null,
@@ -48,7 +50,7 @@ var FileModel = Backbone.Model.extend({
         try {
             var credentials = new kdbxweb.Credentials(password, keyFileData);
             var ts = logger.ts();
-            kdbxweb.Kdbx.load(fileData, credentials, (function(db, err) {
+            kdbxweb.Kdbx.load(fileData, credentials, (db, err) => {
                 if (err) {
                     if (err.code === kdbxweb.Consts.ErrorCodes.InvalidKey && password && !password.byteLength) {
                         logger.info('Error opening file with empty password, try to open with null password');
@@ -67,7 +69,7 @@ var FileModel = Backbone.Model.extend({
                         db.header.keyEncryptionRounds + ' rounds, ' + Math.round(fileData.byteLength / 1024) + ' kB');
                     callback();
                 }
-            }).bind(this));
+            });
         } catch (e) {
             logger.error('Error opening file', e, e.code, e.message, e);
             callback(e);
@@ -88,7 +90,7 @@ var FileModel = Backbone.Model.extend({
             var ts = logger.ts();
             var password = kdbxweb.ProtectedValue.fromString('');
             var credentials = new kdbxweb.Credentials(password);
-            kdbxweb.Kdbx.loadXml(fileXml, credentials, (function(db, err) {
+            kdbxweb.Kdbx.loadXml(fileXml, credentials, (db, err) => {
                 if (err) {
                     logger.error('Error importing file', err.code, err.message, err);
                     callback(err);
@@ -99,7 +101,7 @@ var FileModel = Backbone.Model.extend({
                     logger.info('Imported file ' + this.get('name') + ': ' + logger.ts(ts));
                     callback();
                 }
-            }).bind(this));
+            });
         } catch (e) {
             logger.error('Error importing file', e, e.code, e.message, e);
             callback(e);
@@ -110,13 +112,13 @@ var FileModel = Backbone.Model.extend({
         var password = kdbxweb.ProtectedValue.fromString('demo');
         var credentials = new kdbxweb.Credentials(password);
         var demoFile = kdbxweb.ByteUtils.arrayToBuffer(kdbxweb.ByteUtils.base64ToBytes(demoFileData));
-        kdbxweb.Kdbx.load(demoFile, credentials, (function(db) {
+        kdbxweb.Kdbx.load(demoFile, credentials, db => {
             this.db = db;
             this.set('name', 'Demo');
             this.readModel();
             this.setOpenFile({passwordLength: 4, demo: true});
             callback();
-        }).bind(this));
+        });
     },
 
     setOpenFile: function(props) {
@@ -136,38 +138,50 @@ var FileModel = Backbone.Model.extend({
     readModel: function() {
         var groups = new GroupCollection();
         this.set({
-            id: this.db.getDefaultGroup().uuid.toString(),
+            uuid: this.db.getDefaultGroup().uuid.toString(),
             groups: groups,
             defaultUser: this.db.meta.defaultUser,
             recycleBinEnabled: this.db.meta.recycleBinEnabled,
             historyMaxItems: this.db.meta.historyMaxItems,
             historyMaxSize: this.db.meta.historyMaxSize,
-            keyEncryptionRounds: this.db.header.keyEncryptionRounds
+            keyEncryptionRounds: this.db.header.keyEncryptionRounds,
+            keyChangeForce: this.db.meta.keyChangeForce
         }, { silent: true });
         this.db.groups.forEach(function(group) {
-            var groupModel = this.getGroup(group.uuid.id);
+            var groupModel = this.getGroup(this.subId(group.uuid.id));
             if (groupModel) {
                 groupModel.setGroup(group, this);
             } else {
                 groupModel = GroupModel.fromGroup(group, this);
             }
-            groupModel.set({title: this.get('name')});
             groups.add(groupModel);
         }, this);
         this.buildObjectMap();
+        this.resolveFieldReferences();
+    },
+
+    subId: function(id) {
+        return this.id + ':' + id;
     },
 
     buildObjectMap: function() {
         var entryMap = {};
         var groupMap = {};
-        this.forEachGroup(function(group) {
+        this.forEachGroup(group => {
             groupMap[group.id] = group;
-            group.forEachOwnEntry(null, function(entry) {
+            group.forEachOwnEntry(null, entry => {
                 entryMap[entry.id] = entry;
             });
         }, true);
         this.entryMap = entryMap;
         this.groupMap = groupMap;
+    },
+
+    resolveFieldReferences: function() {
+        let entryMap = this.entryMap;
+        Object.keys(entryMap).forEach(e => {
+            entryMap[e].resolveFieldReferences();
+        });
     },
 
     reload: function() {
@@ -195,7 +209,7 @@ var FileModel = Backbone.Model.extend({
         } else {
             credentials = this.db.credentials;
         }
-        kdbxweb.Kdbx.load(fileData, credentials, (function(remoteDb, err) {
+        kdbxweb.Kdbx.load(fileData, credentials, (remoteDb, err) => {
             if (err) {
                 logger.error('Error opening file to merge', err.code, err.message, err);
             } else {
@@ -220,7 +234,7 @@ var FileModel = Backbone.Model.extend({
                 this.reload();
             }
             callback(err);
-        }).bind(this));
+        });
     },
 
     getLocalEditState: function() {
@@ -257,7 +271,7 @@ var FileModel = Backbone.Model.extend({
     forEachEntry: function(filter, callback) {
         var top = this;
         if (filter.trash) {
-            top = this.getGroup(this.db.meta.recycleBinUuid ? this.db.meta.recycleBinUuid.id : null);
+            top = this.getGroup(this.db.meta.recycleBinUuid ? this.subId(this.db.meta.recycleBinUuid.id) : null);
         } else if (filter.group) {
             top = this.getGroup(filter.group);
         }
@@ -266,7 +280,7 @@ var FileModel = Backbone.Model.extend({
                 top.forEachOwnEntry(filter, callback);
             }
             if (!filter.group || filter.subGroups) {
-                top.forEachGroup(function (group) {
+                top.forEachGroup(group => {
                     group.forEachOwnEntry(filter, callback);
                 });
             }
@@ -274,7 +288,7 @@ var FileModel = Backbone.Model.extend({
     },
 
     forEachGroup: function(callback, includeDisabled) {
-        this.get('groups').forEach(function(group) {
+        this.get('groups').forEach(group => {
             if (callback(group) !== false) {
                 group.forEachGroup(callback, includeDisabled);
             }
@@ -282,7 +296,7 @@ var FileModel = Backbone.Model.extend({
     },
 
     getTrashGroup: function() {
-        return this.db.meta.recycleBinEnabled ? this.getGroup(this.db.meta.recycleBinUuid.id) : null;
+        return this.db.meta.recycleBinEnabled ? this.getGroup(this.subId(this.db.meta.recycleBinUuid.id)) : null;
     },
 
     setModified: function() {
@@ -297,11 +311,10 @@ var FileModel = Backbone.Model.extend({
             customIcons: true,
             binaries: true
         });
-        var that = this;
         this.db.cleanup({ binaries: true });
-        this.db.save(function(data, err) {
+        this.db.save((data, err) => {
             if (err) {
-                logger.error('Error saving file', that.get('name'), err);
+                logger.error('Error saving file', this.get('name'), err);
             }
             cb(data, err);
         });
@@ -339,9 +352,7 @@ var FileModel = Backbone.Model.extend({
             return;
         }
         this.setOpenFile({ passwordLength: this.get('passwordLength') });
-        this.forEachEntry({}, function(entry) {
-            entry.unsaved = false;
-        });
+        this.forEachEntry({}, entry => entry.setSaved());
     },
 
     setPassword: function(password) {
@@ -388,6 +399,28 @@ var FileModel = Backbone.Model.extend({
             this.db.meta.keyChanged = this._oldKeyChangeDate;
         }
         this.set({ keyFileName: '', keyFileChanged: changed });
+        this.setModified();
+    },
+
+    isKeyChangePending: function(force) {
+        if (!this.db.meta.keyChanged) {
+            return false;
+        }
+        var expiryDays = force ? this.db.meta.keyChangeForce : this.db.meta.keyChangeRec;
+        if (!expiryDays || expiryDays < 0 || isNaN(expiryDays)) {
+            return false;
+        }
+        var daysDiff = (Date.now() - this.db.meta.keyChanged) / 1000 / 3600 / 24;
+        return daysDiff > expiryDays;
+    },
+
+    setKeyChange: function(force, days) {
+        if (isNaN(days) || !days || days < 0) {
+            days = -1;
+        }
+        var prop = force ? 'keyChangeForce' : 'keyChangeRec';
+        this.db.meta[prop] = days;
+        this.set(prop, days);
         this.setModified();
     },
 
@@ -438,26 +471,34 @@ var FileModel = Backbone.Model.extend({
     emptyTrash: function() {
         var trashGroup = this.getTrashGroup();
         if (trashGroup) {
+            var modified = false;
             trashGroup.getOwnSubGroups().slice().forEach(function(group) {
                 this.db.move(group, null);
+                modified = true;
             }, this);
             trashGroup.group.entries.forEach(function(entry) {
                 this.db.move(entry, null);
+                modified = true;
             }, this);
             trashGroup.get('entries').reset();
+            if (modified) {
+                this.setModified();
+            }
         }
     },
 
     getCustomIcons: function() {
-        return _.mapObject(this.db.meta.customIcons, function(customIcon) {
-            return IconUrl.toDataUrl(customIcon);
-        });
+        return _.mapObject(this.db.meta.customIcons, customIcon => IconUrl.toDataUrl(customIcon));
     },
 
     addCustomIcon: function(iconData) {
-        var id = kdbxweb.KdbxUuid.random();
-        this.db.meta.customIcons[id] = kdbxweb.ByteUtils.arrayToBuffer(kdbxweb.ByteUtils.base64ToBytes(iconData));
-        return id.toString();
+        var uuid = kdbxweb.KdbxUuid.random();
+        this.db.meta.customIcons[uuid] = kdbxweb.ByteUtils.arrayToBuffer(kdbxweb.ByteUtils.base64ToBytes(iconData));
+        return uuid.toString();
+    },
+
+    renameTag: function(from, to) {
+        this.forEachEntry({}, entry => entry.renameTag(from, to));
     }
 });
 

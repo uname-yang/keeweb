@@ -4,12 +4,12 @@ var Backbone = require('backbone'),
     FeatureDetector = require('../util/feature-detector'),
     baron = require('baron');
 
-var isEnabled = FeatureDetector.isDesktop();
+var isEnabled = !FeatureDetector.isMobile;
 
 var Scrollable = {
     createScroll: function(opts) {
         opts.$ = Backbone.$;
-        //opts.cssGuru = true;
+        // opts.cssGuru = true;
         if (isEnabled) {
             if (this.scroll) {
                 this.removeScroll();
@@ -30,16 +30,18 @@ var Scrollable = {
 
     pageResized: function() {
         // TODO: check size on window resize
-        //if (this.checkSize && (!e || e.source === 'window')) {
-        //    this.checkSize();
-        //}
+        // if (this.checkSize && (!e || e.source === 'window')) {
+        //     this.checkSize();
+        // }
         if (this.scroll) {
             this.scroll.update();
             this.requestAnimationFrame(function() {
-                this.scroll.update();
-                var barHeight = this.scrollerBar.height(),
-                    wrapperHeight = this.scrollerBarWrapper.height();
-                this.scrollerBarWrapper.toggleClass('invisible', barHeight >= wrapperHeight);
+                if (this.scroll) {
+                    this.scroll.update();
+                    var barHeight = this.scrollerBar.height(),
+                        wrapperHeight = this.scrollerBarWrapper.height();
+                    this.scrollerBarWrapper.toggleClass('invisible', barHeight >= wrapperHeight);
+                }
             });
         }
     },
