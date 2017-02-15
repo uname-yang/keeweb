@@ -3,7 +3,7 @@
 const MobileRegex = /iPhone|iPad|iPod|Android|BlackBerry|Opera Mini|IEMobile|WPDesktop|Windows Phone|webOS/i;
 const MinDesktopScreenWidth = 800;
 
-var FeatureDetector = {
+const FeatureDetector = {
     isMac: navigator.platform.indexOf('Mac') >= 0,
     isWindows: navigator.platform.indexOf('Win') >= 0,
     isiOS: /iPad|iPhone|iPod/i.test(navigator.userAgent),
@@ -30,9 +30,8 @@ var FeatureDetector = {
         if (this.isWindows) { return 'Alt+PrintScreen'; }
         return '';
     },
-
     shouldMoveHiddenInputToCopySource: function() {
-        return this.isiOS;
+        return this.isiOS && !/Version\/10/.test(navigator.userAgent);
     },
     canCopyReadonlyInput: function() {
         return !(/CriOS/i.test(navigator.userAgent));

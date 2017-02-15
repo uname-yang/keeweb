@@ -1,21 +1,18 @@
 {
   "settings": {
     "theme": "fb",
+    "locale": "en",
     "expandGroups": true,
     "listViewWidth": null,
     "menuViewWidth": null,
     "tagsViewHeight": null,
     "autoUpdate": "install",
-    "clipboardSeconds": 0,
     "autoSave": true,
     "rememberKeyFiles": false,
     "idleMinutes": 15,
-    "minimizeOnClose": false,
     "tableView": false,
     "colorfulIcons": false,
-    "lockOnMinimize": true,
     "lockOnCopy": false,
-    "helpTipCopyShown": false,
     "skipOpenLocalWarn": false,
     "hideEmptyFields": false,
     "skipHttpsWarning": false,
@@ -29,6 +26,7 @@
     "canOpenSettings": true,
     "canCreate": true,
     "canImportXml": true,
+    "canRemoveLatest": true,
 
     "dropbox": true,
     "dropboxFolder": null,
@@ -44,8 +42,8 @@
   },
   "files": [{
     "storage": "webdav",
-    "name": "",
-    "path": "",
+    "name": "My file",
+    "path": "webdav-url",
     "options": { "user": "", "password": "" }
   }]
 }

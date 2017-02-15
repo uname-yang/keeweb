@@ -1,5 +1,31 @@
 Release notes
 -------------
+##### v1.4.0 (2017-02-04)
+KDBX4 format support and minor improvements  
+`+` password generator usability improvements  
+`+` warning about several tabs  
+`+` use browser language as default locale  
+`+` auto-lock in 12 hours or day  
+`+` text fields context menu on desktop  
+`+` option to disable latest file removal  
+`-` fix #432: drag-drop in vivaldi  
+`-` fix auto-type enabled/disabled issues  
+
+##### v1.3.3 (2016-09-20)
+`+` translations: fr, pl, pt  
+`-` fix #368: desktop file save error  
+`-` fix #369: removed additional webdav request  
+`+` allow password copy on mobile Safari  
+
+##### v1.3.2 (2016-09-13)
+`-` fix #342: url detection in Microsoft Edge  
+`-` fix #351: error alert on power shutdown  
+`-` fix #344: prevent caching WebDAV requests  
+`-` fix #363: drag-drop in Firefox  
+`-` fix #357: linux auto-type issues  
+
+##### v1.3.1 (2016-09-02)
+`-` fix #337: storage sync error  
 
 ##### v1.3.0 (2016-09-01)
 Generator presets, auto-type and ui improvements  
